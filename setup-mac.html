@@ -3,11 +3,73 @@
   <head>
     <meta charset="utf-8" />
     <title>Kaito Udagawaの環境セットアップレシピ</title>
+    <style>
+      section[name=non-exportable-ssh-key] i.private {
+        color: red;
+      }
+      section[name=non-exportable-ssh-key] i.public {
+        color: green;
+      }
+    </style>
   </head>
   <body>
     <article id="umireon-github-io-setup-mac">
       <h1>Kaito Udagawaの環境セットアップレシピ</h1>
 
+      <section name="non-exportable-ssh-key">
+        <h2>Non-exportable SSH鍵の作成</h2>
+        <p>Touch ID搭載のMacには、Secure Enclaveという、秘密鍵を軍用レベルのセキュリティで管理する仕組みが備わっています。特に、ECDSA P-256鍵は、Apple標準のSSHと高度に統合されているため使い勝手が良く、SSHによるリモートログインの認証やGitの署名といった日常的なタスクに簡単に活用することができます。</p>
+
+        <h3>ECDSA P-256による署名検証のメカニズム</h3>
+        <ul>
+          <li>
+            <p><b>署名</b>：まず、秘密鍵 <i class="private">S</i> を256ビット整数の形であらかじめ作っておきます。署名者は、その場限りのランダムな256ビット整数 <i class="private">k</i> を決めて、方式ごとに固定の原点 <i>G</i> からECDSA P-256というアルゴリズムで <i class="private">k</i> 回進みます。この時の x 座標（256ビット整数）が <i class="public">r</i> と呼ばれます。次に、データから一意に決定する256ビット整数 <i class="public">D</i> を計算します。 <i class="public">D</i> には一般的にはハッシュやダイジェストと呼ばれる値が使用されます。そして、次の式で <i class="public">s</i> を定めます。</p>
+            <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+              <mrow>
+                <mi mathcolor="green">s</mi>
+                <mo>=</mo>
+                <mfrac>
+                  <row>
+                    <mi mathcolor="green">D</mi>
+                    <mo>+</mo>
+                    <mi mathcolor="green">r</mi>
+                    <mi mathcolor="red">S</mi>
+                  </row>
+                  <mi mathcolor="red">k</mi>
+                </mfrac>
+              </mrow>
+            </math>
+            <p>この時の (<i class="public">r</i>, <i class="public">s</i>) の組が「署名」と呼ばれ、データと共に受信者に送信されます。</p>
+          </li>
+          <li>
+            <p><b>検証</b>：公開鍵 <i class="public">P</i> は、原点 <i>G</i> から <i class="private">S</i> 回進んだ時の xy 座標です。この <i class="private">S</i> は秘密鍵のことであり、公開鍵 <i class="public">P</i> は事前に署名者が計算して共有しておきます。検証者が検証を始める時、以下の2つの長さを計算する必要があります。</p>
+            <ol>
+              <li>原点 <i>G</i> から <i class="public">D</i> / <i class="public">s</i> 回進んだ点までの長さ。</li>
+              <li>公開鍵の地点 <i class="public">P</i> から <i class="public">r</i> / <i class="public">s</i> 回進んだ点までの長さ。<i>G</i><i class="public">P</i> の長さ <i class="private">S</i> が <i class="public">r</i> / <i class="public">s</i> 倍されるので、その位置は原点 <i>G</i> から <i class="public">r</i><i class="private">S</i> / <i class="public">s</i> 回だけ進んだものに相当します。</li>
+            </ol>
+            <p>二つの計算した長さを足し合わせると、この座標が原点 <i>G</i> から <i class="private">k</i> 回進んだ位置であることが <i class="public">s</i> の定義から導かれるので、正しく計算できていれば結果の x 座標は <i class="public">r</i> （あらかじめ計算しておいた <i class="private">k</i> 回進んだ地点の x 座標）と一致するはずです。これで、秘密鍵 <i class="private">S</i> を使った計算と公開鍵 <i class="public">P</i> と署名 (<i class="public">r</i>, <i class="public">s</i>) を使った計算が、入力 <i class="public">D</i> に対して同じ結果を返すことが確認されたわけですが、この計算にはランダムな要素 <i class="private">k</i> が関わっているので、 <i class="private">S</i> と <i class="public">P</i> と (<i class="public">r</i>, <i class="public">s</i>) の関係を正確に把握している署名者じゃないとこんな奇跡は起こせません。これにより、<i class="public">D</i> が本当に署名者のものであることが証明されました。</p>
+          </li>
+          <li><b>補足</b>：「ECDSA P-256というアルゴリズムによる操作」が楕円曲線上における計算です。この辺りの計算が巡回群などを形成するため、長さのような概念が構築され、このような計算が可能になります。ところが、楕円曲線上の操作の性質として、長さから操作回数を逆算することが極めて困難であるため（離散対数問題）、それがこのアルゴリズムの安全性の根拠になっています。</li>
+        </ul>
+
+        <h3>TahoeにおけるNon-exportable秘密鍵の作成方法</h3>
+        <code>
+          <pre>
+            set -euo pipefail
+
+            mkdir -p ~/.ssh
+            pushd ~/.ssh
+            sc_auth create-ctk-identity -l "$(whoami)-$(date "+%Y-%m-%d")" -k p-256-ne -t bio
+            (cd ~/.ssh && ssh-keygen -K -w /usr/lib/ssh-keychain.dylib)
+            git config set --global gpg.format ssh
+            git config set --global user.signingkey ~/.ssh/id_ecdsa_sk_rk.pub
+            popd
+
+            set +euo pipefail
+          </pre>
+        </code>
+      </section>
+      
       <section name="homebrew">
         <h2>Homebrew</h2>
         <p>Homebrewは、Macのエコシステムで最も普及率が高いパッケージマネージャーです。Formulaは、開発に使うネイティブライブラリやコマンドを扱うためのものです。Caskは、Macのデスクトップで実行可能なアプリケーションを管理するためのものです。App Storeで扱うアプリケーションに関しては、Homebrewだけでは管理することができません。</p>
