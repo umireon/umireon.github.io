@@ -53,21 +53,15 @@ section[name=non-exportable-ssh-key] i.public {
 </ul>
 
 <h3>TahoeにおけるNon-exportable秘密鍵の作成方法</h3>
-<code>
-<pre>
-set -euo pipefail
-
-mkdir -p ~/.ssh
-pushd ~/.ssh
-sc_auth create-ctk-identity -l "$(whoami)-$(date "+%Y-%m-%d")" -k p-256-ne -t bio
-(cd ~/.ssh && ssh-keygen -K -w /usr/lib/ssh-keychain.dylib)
-git config set --global gpg.format ssh
-git config set --global user.signingkey ~/.ssh/id_ecdsa_sk_rk.pub
-popd
-
-set +euo pipefail
-</pre>
-</code>
+<ul>
+<li><code>mkdir -p ~/.ssh && cd ~/.ssh</code></li>
+<li><code>sc_auth create-ctk-identity -l "$(whoami)-$(date "+%Y-%m-%d")" -k p-256-ne -t bio</code></li>
+<li><code>ssh-keygen -K -w /usr/lib/ssh-keychain.dylib</code></li>
+<li><code>git config set --global gpg.format ssh</code></li>
+<li><code>git config set --global user.signingkey ~/.ssh/id_ecdsa_sk_rk.pub</code></li>
+<li><code>git config set --global commit.gpgsign true</code></li>
+<li><code>git config set --global tag.gpgSign true</code></li>
+</ul>
 </section>
 
 <section name="homebrew">
